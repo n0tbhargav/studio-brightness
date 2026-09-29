@@ -8,7 +8,6 @@ use hidapi::{HidApi, HidDevice};
 
 const VENDOR_ID: u16 = 0x05ac;
 const PRODUCT_ID: u16 = 0x1114;
-const INTERFACE: i32 = 7;
 const MIN_RAW: u32 = 400;
 const MAX_RAW: u32 = 60000;
 
@@ -22,22 +21,27 @@ fn to_raw(percent: i32) -> u32 {
     MIN_RAW + (p * (MAX_RAW - MIN_RAW) as f64 / 100.0).round() as u32
 }
 
-/// Opens every attached Studio Display's brightness interface.
+/// Opens every HID interface/collection of an attached Studio Display that answers the
+/// brightness feature report with an in-range value. Windows exposes each top-level
+/// collection as its own device path, so we probe rather than trust the interface number.
 fn open_all() -> Vec<HidDevice> {
     let Ok(api) = HidApi::new() else { return Vec::new() };
     api.device_list()
-        .filter(|d| {
-            d.vendor_id() == VENDOR_ID && d.product_id() == PRODUCT_ID && d.interface_number() == INTERFACE
-        })
+        .filter(|d| d.vendor_id() == VENDOR_ID && d.product_id() == PRODUCT_ID)
         .filter_map(|d| d.open_device(&api).ok())
+        .filter(|dev| get_raw(dev).is_some_and(|r| (MIN_RAW..=MAX_RAW).contains(&r)))
         .collect()
 }
 
-fn get(dev: &HidDevice) -> Option<i32> {
+fn get_raw(dev: &HidDevice) -> Option<u32> {
     let mut buf = [0u8; 7];
     buf[0] = 1;
     dev.get_feature_report(&mut buf).ok()?;
-    Some(to_percent(u32::from_le_bytes([buf[1], buf[2], buf[3], buf[4]])))
+    Some(u32::from_le_bytes([buf[1], buf[2], buf[3], buf[4]]))
+}
+
+fn get(dev: &HidDevice) -> Option<i32> {
+    get_raw(dev).map(to_percent)
 }
 
 fn set(dev: &HidDevice, percent: i32) {
