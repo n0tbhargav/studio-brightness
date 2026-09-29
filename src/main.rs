@@ -40,6 +40,7 @@ fn main() {
         .collect();
     let brighter = MenuItem::new("Brighter\tCtrl+Alt+Up", true, None);
     let dimmer = MenuItem::new("Dimmer\tCtrl+Alt+Down", true, None);
+    let diag = MenuItem::new("Diagnostics...", true, None);
     let quit = MenuItem::new("Quit", true, None);
 
     let menu = Menu::new();
@@ -50,6 +51,7 @@ fn main() {
         menu.append(item).unwrap();
     }
     menu.append(&PredefinedMenuItem::separator()).unwrap();
+    menu.append(&diag).unwrap();
     menu.append(&quit).unwrap();
 
     let _tray = TrayIconBuilder::new()
@@ -81,6 +83,11 @@ fn main() {
         while let Ok(e) = menu_rx.try_recv() {
             if e.id == quit.id() {
                 *control_flow = ControlFlow::Exit;
+            } else if e.id == diag.id() {
+                let path = std::env::temp_dir().join("studio-brightness-diag.txt");
+                if std::fs::write(&path, display::diagnostics()).is_ok() {
+                    let _ = std::process::Command::new("notepad").arg(&path).spawn();
+                }
             } else if e.id == brighter.id() {
                 display::adjust(STEP);
             } else if e.id == dimmer.id() {

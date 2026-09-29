@@ -59,3 +59,43 @@ pub fn adjust(delta: i32) {
         }
     }
 }
+
+/// Human-readable dump of every Apple HID interface and the result of probing it.
+pub fn diagnostics() -> String {
+    use std::fmt::Write;
+    let mut out = String::new();
+    let api = match HidApi::new() {
+        Ok(a) => a,
+        Err(e) => return format!("HidApi::new failed: {e}\n"),
+    };
+    let mut n = 0;
+    for d in api.device_list().filter(|d| d.vendor_id() == VENDOR_ID) {
+        n += 1;
+        let _ = writeln!(
+            out,
+            "pid={:04x} iface={} usage_page={:04x} usage={:04x}\n  path={:?}",
+            d.product_id(), d.interface_number(), d.usage_page(), d.usage(), d.path()
+        );
+        match d.open_device(&api) {
+            Err(e) => {
+                let _ = writeln!(out, "  open: FAILED {e}");
+            }
+            Ok(dev) => {
+                let mut buf = [0u8; 7];
+                buf[0] = 1;
+                match dev.get_feature_report(&mut buf) {
+                    Ok(len) => {
+                        let _ = writeln!(out, "  open: ok; get_feature_report ok len={len} bytes={buf:02x?} -> {}%", to_percent(u32::from_le_bytes([buf[1], buf[2], buf[3], buf[4]])));
+                    }
+                    Err(e) => {
+                        let _ = writeln!(out, "  open: ok; get_feature_report FAILED {e}");
+                    }
+                }
+            }
+        }
+    }
+    if n == 0 {
+        out.push_str("No HID interfaces with vendor id 05ac found.\n");
+    }
+    out
+}
