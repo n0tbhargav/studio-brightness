@@ -7,7 +7,8 @@
 use hidapi::{HidApi, HidDevice};
 
 const VENDOR_ID: u16 = 0x05ac;
-const PRODUCT_ID: u16 = 0x1114;
+// Studio Display (2022) 0x1114, XDR 0x1116, Studio Display (2026) 0x1118; 0x1115/0x1117 seen in other tools.
+const PRODUCT_IDS: std::ops::RangeInclusive<u16> = 0x1114..=0x1118;
 const MIN_RAW: u32 = 400;
 const MAX_RAW: u32 = 60000;
 
@@ -27,7 +28,7 @@ fn to_raw(percent: i32) -> u32 {
 fn open_all() -> Vec<HidDevice> {
     let Ok(api) = HidApi::new() else { return Vec::new() };
     api.device_list()
-        .filter(|d| d.vendor_id() == VENDOR_ID && d.product_id() == PRODUCT_ID)
+        .filter(|d| d.vendor_id() == VENDOR_ID && PRODUCT_IDS.contains(&d.product_id()))
         .filter_map(|d| d.open_device(&api).ok())
         .filter(|dev| get_raw(dev).is_some_and(|r| (MIN_RAW..=MAX_RAW).contains(&r)))
         .collect()
