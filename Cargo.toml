@@ -1,0 +1,17 @@
+[package]
+name = "studio-brightness"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+global-hotkey = "0.8.0"
+hidapi = { version = "2.6.7", default-features = false, features = ["windows-native"] }
+tao = "0.37.1"
+tray-icon = "0.25.1"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
