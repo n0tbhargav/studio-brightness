@@ -13,7 +13,8 @@ global-hotkey = "0.8.0"
 hidapi = { version = "2.6.7", default-features = false, features = ["windows-native"] }
 tray-icon = "0.25.1"
 windows = { version = "0.62.2", features = [
-    "Devices_Sensors", "Foundation",
+    "Devices_Sensors", "Devices_Enumeration", "Foundation", "Foundation_Collections",
+    "Win32_System_WinRT", "Win32_System_Com", "Win32_System_Threading", "Win32_System_LibraryLoader", "Win32_UI_Shell",
     "Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem",
     "Win32_Graphics_Gdi", "Win32_UI_ColorSystem", "Win32_UI_WindowsAndMessaging",
     "Win32_System_Registry", "Win32_System_SystemInformation",

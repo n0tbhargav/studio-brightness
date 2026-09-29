@@ -10,11 +10,12 @@ pub struct Settings {
     pub auto_on: bool,
     pub bias: f32,
     pub autostart: bool,
+    pub tint_mode: i32,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { tt_on: false, manual_on: false, warmth: 4800.0, shift: 0.0, auto_on: false, bias: 0.0, autostart: false }
+        Self { tt_on: false, manual_on: false, warmth: 4800.0, shift: 0.0, auto_on: false, bias: 0.0, autostart: false, tint_mode: 0 }
     }
 }
 
@@ -38,6 +39,7 @@ pub fn load() -> Settings {
             "auto_on" => s.auto_on = b,
             "bias" => s.bias = f.clamp(-40.0, 40.0),
             "autostart" => s.autostart = b,
+            "tint_mode" => s.tint_mode = (f as i32).clamp(0, 2),
             _ => {}
         }
     }
@@ -52,8 +54,8 @@ pub fn save(s: &Settings) {
     let _ = std::fs::write(
         p,
         format!(
-            "tt_on={}\nmanual_on={}\nwarmth={}\nshift={}\nauto_on={}\nbias={}\nautostart={}\n",
-            s.tt_on as i32, s.manual_on as i32, s.warmth, s.shift, s.auto_on as i32, s.bias, s.autostart as i32
+            "tt_on={}\nmanual_on={}\nwarmth={}\nshift={}\nauto_on={}\nbias={}\nautostart={}\ntint_mode={}\n",
+            s.tt_on as i32, s.manual_on as i32, s.warmth, s.shift, s.auto_on as i32, s.bias, s.autostart as i32, s.tint_mode
         ),
     );
 }

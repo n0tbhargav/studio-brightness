@@ -190,6 +190,7 @@ export component Flyout inherits Window {
     no-frame: true;
     always-on-top: true;
     background: Theme.panel;
+    icon: @image-url("../assets/icon-256.png");
     width: 392px;
     default-font-family: "Departure Mono";
     default-font-size: 11px;
@@ -237,6 +238,7 @@ export component Flyout inherits Window {
 
     // footer
     in-out property <bool> autostart: false;
+    in property <string> tint-mode-text: "tint: auto";
 
     callback brightness-changed(float);
     callback auto-toggled(bool);
@@ -249,6 +251,7 @@ export component Flyout inherits Window {
     callback warmth-changed(float);
     callback shift-changed(float);
     callback autostart-toggled(bool);
+    callback tint-mode-clicked();
     callback diagnostics();
     callback quit();
 
@@ -545,17 +548,21 @@ export component Flyout inherits Window {
                             }
                         }
                     }
-                    Text { text: "Launch at sign-in"; color: Theme.fg; vertical-alignment: center; }
+                    Text { text: "Start at sign-in"; color: Theme.fg; vertical-alignment: center; }
                 }
                 HorizontalLayout {
                     spacing: 6px;
                     alignment: end;
                     Rectangle {
-                        width: 90px;
-                        VerticalLayout { alignment: center; TextButton { text: "diagnostics"; clicked => { root.diagnostics(); } } }
+                        width: 92px;
+                        VerticalLayout { alignment: center; TextButton { text: root.tint-mode-text; clicked => { root.tint-mode-clicked(); } } }
                     }
                     Rectangle {
-                        width: 44px;
+                        width: 40px;
+                        VerticalLayout { alignment: center; TextButton { text: "diag"; clicked => { root.diagnostics(); } } }
+                    }
+                    Rectangle {
+                        width: 40px;
                         VerticalLayout { alignment: center; TextButton { text: "quit"; clicked => { root.quit(); } } }
                     }
                 }

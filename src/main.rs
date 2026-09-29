@@ -22,6 +22,8 @@ mod settings;
 #[cfg(windows)]
 mod truetone;
 #[cfg(windows)]
+mod startup;
+#[cfg(windows)]
 mod winutil;
 
 #[cfg(windows)]
@@ -47,10 +49,11 @@ mod app {
     use crate::display::Displays;
     use crate::preview::Preview;
     use crate::presets::Presets;
+    use crate::color::{TintMode, Tinter};
     use crate::sensor::{Ambient, Sensor};
     use crate::settings::Settings;
     use crate::truetone::{Source, TrueTone};
-    use crate::{color, display, settings, winutil};
+    use crate::{color, display, settings, startup, winutil};
 
     slint::include_modules!();
 
@@ -67,8 +70,9 @@ mod app {
         osd: slint::Weak<Osd>,
         displays: Displays,
         presets: Option<Presets>,
-        sensor: Option<Sensor>,
-        sensor_probed: bool,
+        sensor: Sensor,
+        tinter: Tinter,
+        tint_mode: TintMode,
         ambient: Option<Ambient>,
         st: Settings,
         dirty: bool,
@@ -96,20 +100,10 @@ mod app {
         t.wHour as f64 + t.wMinute as f64 / 60.0
     }
 
-    fn sun_icon() -> Icon {
-        const N: u32 = 32;
-        let mut rgba = Vec::with_capacity((N * N * 4) as usize);
-        for y in 0..N {
-            for x in 0..N {
-                let (dx, dy) = (x as f32 - 15.5, y as f32 - 15.5);
-                let d = (dx * dx + dy * dy).sqrt();
-                let angle = dy.atan2(dx).rem_euclid(std::f32::consts::FRAC_PI_4);
-                let on_ray = (11.0..15.0).contains(&d) && (angle < 0.2 || angle > std::f32::consts::FRAC_PI_4 - 0.2);
-                let on = d <= 7.0 || on_ray;
-                rgba.extend_from_slice(if on { &[242, 179, 61, 255] } else { &[0, 0, 0, 0] });
-            }
-        }
-        Icon::from_rgba(rgba, N, N).expect("valid icon")
+    fn app_icon() -> Icon {
+        let img = image::load_from_memory(include_bytes!("../assets/icon-32.png")).expect("icon asset").to_rgba8();
+        let (w, h) = img.dimensions();
+        Icon::from_rgba(img.into_raw(), w, h).expect("valid icon")
     }
 
     impl App {
@@ -125,7 +119,7 @@ mod app {
         }
 
         fn auto_available(&self) -> bool {
-            self.sensor.is_some() && self.ambient.is_some()
+            self.ambient.is_some()
         }
 
         fn visible(&self) -> bool {
@@ -229,7 +223,7 @@ mod app {
                 Some((ak, ash)) => (ak - k).abs() > 1.0 || (ash - shift).abs() > 0.5 || (src != Source::Off && self.applied_at.elapsed() > Duration::from_secs(3)),
             };
             if need {
-                let n = color::apply(k, shift);
+                let n = self.tinter.apply(k, shift, self.tint_mode);
                 self.tint_ok = n > 0 || src == Source::Off;
                 self.applied = Some((k, shift));
                 self.applied_at = Instant::now();
@@ -246,11 +240,7 @@ mod app {
         }
 
         fn sensor_tick(&mut self) {
-            if !self.sensor_probed {
-                self.sensor = Sensor::new();
-                self.sensor_probed = true;
-            }
-            self.ambient = self.sensor.as_ref().and_then(|s| s.read());
+            self.ambient = self.sensor.read();
             self.flush();
         }
 
@@ -361,8 +351,10 @@ mod app {
             ui.set_auto_available(self.auto_available());
             ui.set_auto_on(self.ab.on && !locked);
             ui.set_auto_status(
-                if self.sensor.is_none() {
+                if self.sensor.found() == Some(false) {
                     "no light sensor".to_string()
+                } else if self.ambient.is_none() {
+                    "waiting for sensor".to_string()
                 } else if locked {
                     "locked".to_string()
                 } else if self.ab.on {
@@ -418,7 +410,7 @@ mod app {
                 match (&self.ambient, room_k) {
                     (Some(a), Some(k)) => format!("room {k:.0} K · {:.0} lux", a.lux),
                     (Some(a), None) => format!("room {:.0} lux · no color data", a.lux),
-                    (None, _) => "room: no sensor".to_string(),
+                    (None, _) => (if self.sensor.found() == Some(false) { "room: no sensor" } else { "room: waiting for sensor" }).to_string(),
                 }
                 .into(),
             );
@@ -452,6 +444,7 @@ mod app {
                 .into(),
             );
             ui.set_autostart(self.st.autostart);
+            ui.set_tint_mode_text(self.tint_mode.label().into());
 
             // live preview of the screen
             let m = color::multipliers(self.tt.cur_k(), if self.src == Source::Manual { self.tt.shift as f64 } else { 0.0 });
@@ -477,24 +470,18 @@ mod app {
             }
             out.push_str("\n== Color ==\n");
             out.push_str(&color::describe());
+            out.push_str(&format!("tint mode: {}\nlast tint result: {}\n", self.tint_mode.label(), self.tinter.note));
             out.push_str("\n== Ambient sensor ==\n");
-            match &self.sensor {
-                None => out.push_str("No Windows light sensor found.\n"),
-                Some(s) => out.push_str(&format!(
-                    "id={}\nchromaticity_supported={}\nlast reading: {}\n",
-                    s.id(),
-                    s.chromaticity,
-                    match &self.ambient {
-                        Some(a) => format!("{:.1} lux, cct {:?}", a.lux, a.cct),
-                        None => "none".into(),
-                    }
-                )),
-            }
+            out.push_str(&self.sensor.info());
             out
         }
     }
 
     pub fn run() {
+        if !startup::claim_single_instance() {
+            return; // another instance was asked to open its flyout
+        }
+        startup::ensure_start_menu_shortcut();
         let cfg = settings::load();
         let start_hidden = std::env::args().any(|a| a == "--minimized");
 
@@ -511,8 +498,9 @@ mod app {
             displays,
             active_mode: None,
             presets,
-            sensor: None,
-            sensor_probed: false,
+            sensor: Sensor::start(),
+            tinter: Tinter::new(),
+            tint_mode: TintMode::from_index(cfg.tint_mode),
             ambient: None,
             tt: TrueTone::new(cfg.tt_on, cfg.manual_on, cfg.warmth, cfg.shift),
             ab: AutoBright::new(cfg.auto_on, cfg.bias),
@@ -628,6 +616,17 @@ mod app {
                 s.mark_dirty();
             }
         });
+        flyout.on_tint_mode_clicked({
+            let a = app.clone();
+            move || {
+                let mut s = a.borrow_mut();
+                s.tint_mode = s.tint_mode.next();
+                s.st.tint_mode = s.tint_mode.index();
+                s.applied = None; // re-apply with the new method
+                s.mark_dirty();
+                s.push_ui();
+            }
+        });
         flyout.on_diagnostics({
             let a = app.clone();
             move || {
@@ -658,7 +657,7 @@ mod app {
             .with_menu(Box::new(menu))
             .with_menu_on_left_click(false)
             .with_tooltip("Studio Brightness")
-            .with_icon(sun_icon())
+            .with_icon(app_icon())
             .build()
             .expect("tray icon");
 
@@ -680,6 +679,9 @@ mod app {
             let hotkey_rx = GlobalHotKeyEvent::receiver();
             move || {
                 let mut s = a.borrow_mut();
+                if startup::take_show_request() {
+                    s.show_flyout();
+                }
                 while let Ok(e) = menu_rx.try_recv() {
                     if e.id == quit.id() {
                         color::reset();
@@ -769,6 +771,6 @@ mod app {
         });
 
         slint::run_event_loop_until_quit().expect("event loop");
-        color::reset();
+        app.borrow_mut().tinter.reset();
     }
 }
