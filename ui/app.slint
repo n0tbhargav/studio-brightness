@@ -1,0 +1,261 @@
+import { Slider, Switch, Button } from "std-widgets.slint";
+
+component NavItem inherits Rectangle {
+    in property <string> label;
+    in property <bool> active;
+    callback clicked();
+    height: 40px;
+    border-radius: 8px;
+    background: root.active ? #2b3038 : ta.has-hover ? #23272e : transparent;
+    Rectangle {
+        x: 0px;
+        width: 3px;
+        height: 18px;
+        border-radius: 2px;
+        background: root.active ? #f5b93a : transparent;
+    }
+    Text {
+        x: 16px;
+        text: root.label;
+        color: root.active ? #ffffff : #b3bac4;
+        font-size: 14px;
+        font-weight: root.active ? 600 : 400;
+        vertical-alignment: center;
+    }
+    ta := TouchArea { clicked => { root.clicked(); } }
+}
+
+component Card inherits Rectangle {
+    background: #1f2227;
+    border-radius: 14px;
+    border-width: 1px;
+    border-color: #2b3038;
+}
+
+component Segmented inherits Rectangle {
+    in property <[string]> options;
+    in property <int> current;
+    callback selected(int);
+    height: 38px;
+    background: #16181c;
+    border-radius: 10px;
+    HorizontalLayout {
+        padding: 3px;
+        spacing: 3px;
+        for opt[i] in root.options : Rectangle {
+            border-radius: 8px;
+            background: i == root.current ? #363c47 : transparent;
+            Text {
+                text: opt;
+                color: i == root.current ? #ffffff : #9aa1ab;
+                font-size: 13px;
+                font-weight: i == root.current ? 600 : 400;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            TouchArea { clicked => { root.selected(i); } }
+        }
+    }
+}
+
+component Heading inherits VerticalLayout {
+    in property <string> title;
+    in property <string> subtitle;
+    spacing: 4px;
+    Text { text: root.title; color: #ffffff; font-size: 26px; font-weight: 700; }
+    Text { text: root.subtitle; color: #8b929c; font-size: 13px; wrap: word-wrap; }
+}
+
+export component AppWindow inherits Window {
+    title: "Studio Brightness";
+    icon: @image-url("icon.png");
+    min-width: 720px;
+    min-height: 520px;
+    preferred-width: 860px;
+    preferred-height: 580px;
+    background: #14161a;
+
+    // navigation
+    in-out property <int> page: 0;
+
+    // brightness
+    in-out property <float> brightness: 50;
+    in property <bool> display-found: false;
+    in property <string> display-status: "";
+
+    // true tone
+    in-out property <int> tt-mode: 0;
+    in-out property <float> tt-strength: 80;
+    in-out property <float> tt-warmth: 5000;
+    in property <string> ambient-text: "";
+    in property <string> whitepoint-text: "";
+    in property <string> tt-note: "";
+
+    // settings
+    in-out property <bool> autostart: false;
+    in property <string> version: "";
+
+    callback set-brightness(int);
+    callback tt-mode-changed(int);
+    callback tt-strength-changed(int);
+    callback tt-warmth-changed(int);
+    callback autostart-changed(bool);
+    callback refresh();
+    callback diagnostics();
+
+    HorizontalLayout {
+        // ---- sidebar ----
+        Rectangle {
+            width: 210px;
+            background: #1a1d22;
+            VerticalLayout {
+                padding: 16px;
+                spacing: 6px;
+                alignment: start;
+                Text {
+                    text: "Studio Brightness";
+                    color: #ffffff;
+                    font-size: 16px;
+                    font-weight: 700;
+                }
+                Rectangle { height: 14px; }
+                NavItem { label: "Brightness"; active: root.page == 0; clicked => { root.page = 0; } }
+                NavItem { label: "True Tone"; active: root.page == 1; clicked => { root.page = 1; } }
+                NavItem { label: "Settings"; active: root.page == 2; clicked => { root.page = 2; } }
+            }
+        }
+
+        // ---- content ----
+        Rectangle {
+            VerticalLayout {
+                padding: 32px;
+                spacing: 20px;
+                alignment: start;
+
+                if root.page == 0 : VerticalLayout {
+                    spacing: 20px;
+                    Heading { title: "Brightness"; subtitle: root.display-status; }
+                    Card {
+                        height: 200px;
+                        VerticalLayout {
+                            padding: 24px;
+                            spacing: 14px;
+                            Text {
+                                text: Math.round(root.brightness) + "%";
+                                color: #ffffff;
+                                font-size: 54px;
+                                font-weight: 700;
+                            }
+                            Slider {
+                                minimum: 0;
+                                maximum: 100;
+                                enabled: root.display-found;
+                                value <=> root.brightness;
+                                changed(v) => { root.set-brightness(Math.round(v)); }
+                            }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                for p in [0, 25, 50, 75, 100] : Button {
+                                    text: p + "%";
+                                    enabled: root.display-found;
+                                    clicked => { root.brightness = p; root.set-brightness(p); }
+                                }
+                            }
+                        }
+                    }
+                    HorizontalLayout {
+                        alignment: start;
+                        spacing: 10px;
+                        Button { text: "Refresh"; clicked => { root.refresh(); } }
+                        Text {
+                            text: "Hotkeys: Ctrl+Alt+Up / Ctrl+Alt+Down";
+                            color: #6f7681;
+                            font-size: 12px;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+
+                if root.page == 1 : VerticalLayout {
+                    spacing: 20px;
+                    Heading {
+                        title: "True Tone";
+                        subtitle: "Warms the screen to match your room, like Apple's True Tone.";
+                    }
+                    Segmented {
+                        options: ["Off", "Auto", "Manual"];
+                        current: root.tt-mode;
+                        selected(i) => { root.tt-mode = i; root.tt-mode-changed(i); }
+                    }
+                    Card {
+                        height: 150px;
+                        VerticalLayout {
+                            padding: 22px;
+                            spacing: 8px;
+                            Text { text: "Ambient light"; color: #8b929c; font-size: 12px; }
+                            Text { text: root.ambient-text; color: #ffffff; font-size: 18px; font-weight: 600; }
+                            Rectangle { height: 6px; }
+                            Text { text: "Display white point"; color: #8b929c; font-size: 12px; }
+                            Text { text: root.whitepoint-text; color: #f5b93a; font-size: 18px; font-weight: 600; }
+                        }
+                    }
+                    if root.tt-mode == 1 : Card {
+                        height: 96px;
+                        VerticalLayout {
+                            padding: 20px;
+                            spacing: 8px;
+                            Text { text: "Strength  " + Math.round(root.tt-strength) + "%"; color: #ffffff; font-size: 14px; }
+                            Slider {
+                                minimum: 0;
+                                maximum: 100;
+                                value <=> root.tt-strength;
+                                changed(v) => { root.tt-strength-changed(Math.round(v)); }
+                            }
+                        }
+                    }
+                    if root.tt-mode == 2 : Card {
+                        height: 96px;
+                        VerticalLayout {
+                            padding: 20px;
+                            spacing: 8px;
+                            Text { text: "Warmth  " + Math.round(root.tt-warmth) + " K"; color: #ffffff; font-size: 14px; }
+                            Slider {
+                                minimum: 3000;
+                                maximum: 6500;
+                                value <=> root.tt-warmth;
+                                changed(v) => { root.tt-warmth-changed(Math.round(v)); }
+                            }
+                        }
+                    }
+                    Text {
+                        text: root.tt-note;
+                        color: #6f7681;
+                        font-size: 12px;
+                        wrap: word-wrap;
+                    }
+                }
+
+                if root.page == 2 : VerticalLayout {
+                    spacing: 20px;
+                    Heading { title: "Settings"; subtitle: "Runs in the system tray. Closing this window keeps it running."; }
+                    Card {
+                        height: 72px;
+                        HorizontalLayout {
+                            padding: 22px;
+                            Text { text: "Launch at sign-in"; color: #ffffff; font-size: 14px; vertical-alignment: center; }
+                            Switch {
+                                checked <=> root.autostart;
+                                toggled => { root.autostart-changed(self.checked); }
+                            }
+                        }
+                    }
+                    HorizontalLayout {
+                        alignment: start;
+                        Button { text: "Diagnostics"; clicked => { root.diagnostics(); } }
+                    }
+                    Text { text: "Version " + root.version; color: #6f7681; font-size: 12px; }
+                }
+            }
+        }
+    }
+}

@@ -22,18 +22,6 @@ fn to_raw(percent: i32) -> u32 {
     MIN_RAW + (p * (MAX_RAW - MIN_RAW) as f64 / 100.0).round() as u32
 }
 
-/// Opens every HID interface/collection of an attached Studio Display that answers the
-/// brightness feature report with an in-range value. Windows exposes each top-level
-/// collection as its own device path, so we probe rather than trust the interface number.
-fn open_all() -> Vec<HidDevice> {
-    let Ok(api) = HidApi::new() else { return Vec::new() };
-    api.device_list()
-        .filter(|d| d.vendor_id() == VENDOR_ID && PRODUCT_IDS.contains(&d.product_id()))
-        .filter_map(|d| d.open_device(&api).ok())
-        .filter(|dev| get_raw(dev).is_some_and(|r| (MIN_RAW..=MAX_RAW).contains(&r)))
-        .collect()
-}
-
 fn get_raw(dev: &HidDevice) -> Option<u32> {
     let mut buf = [0u8; 7];
     buf[0] = 1;
@@ -41,26 +29,75 @@ fn get_raw(dev: &HidDevice) -> Option<u32> {
     Some(u32::from_le_bytes([buf[1], buf[2], buf[3], buf[4]]))
 }
 
-fn get(dev: &HidDevice) -> Option<i32> {
-    get_raw(dev).map(to_percent)
-}
-
-fn set(dev: &HidDevice, percent: i32) {
+fn set_raw(dev: &HidDevice, percent: i32) -> bool {
     let r = to_raw(percent).to_le_bytes();
-    let _ = dev.send_feature_report(&[1, r[0], r[1], r[2], r[3], 0, 0]);
+    dev.send_feature_report(&[1, r[0], r[1], r[2], r[3], 0, 0]).is_ok()
 }
 
-pub fn set_all(percent: i32) {
-    for dev in open_all() {
-        set(&dev, percent);
+/// Handles to every Studio Display HID collection that answers the brightness report.
+/// Windows exposes each top-level collection as its own device path, so we probe
+/// rather than trust the interface number.
+#[derive(Default)]
+pub struct Displays {
+    devs: Vec<HidDevice>,
+    pub pids: Vec<u16>,
+}
+
+impl Displays {
+    pub fn new() -> Self {
+        let mut d = Self::default();
+        d.refresh();
+        d
     }
-}
 
-/// Nudges each display relative to its own current level.
-pub fn adjust(delta: i32) {
-    for dev in open_all() {
-        if let Some(cur) = get(&dev) {
-            set(&dev, cur + delta);
+    pub fn refresh(&mut self) {
+        self.devs.clear();
+        self.pids.clear();
+        let Ok(api) = HidApi::new() else { return };
+        for info in api
+            .device_list()
+            .filter(|d| d.vendor_id() == VENDOR_ID && PRODUCT_IDS.contains(&d.product_id()))
+        {
+            let Ok(dev) = info.open_device(&api) else { continue };
+            if get_raw(&dev).is_some_and(|r| (MIN_RAW..=MAX_RAW).contains(&r)) {
+                self.pids.push(info.product_id());
+                self.devs.push(dev);
+            }
+        }
+    }
+
+    pub fn found(&self) -> bool {
+        !self.devs.is_empty()
+    }
+
+    pub fn percent(&self) -> Option<i32> {
+        self.devs.first().and_then(get_raw).map(to_percent)
+    }
+
+    pub fn set(&mut self, percent: i32) {
+        if !self.devs.iter().all(|d| set_raw(d, percent)) {
+            // A handle went stale (unplug / sleep): reopen and retry once.
+            self.refresh();
+            for d in &self.devs {
+                set_raw(d, percent);
+            }
+        }
+    }
+
+    /// Nudges relative to the first display's current level.
+    pub fn adjust(&mut self, delta: i32) {
+        if let Some(cur) = self.percent() {
+            self.set(cur + delta);
+        }
+    }
+
+    pub fn status(&self) -> String {
+        match self.pids.first() {
+            None => "No Studio Display found. Connect it with its USB-C / Thunderbolt cable.".into(),
+            Some(pid) => format!(
+                "Studio Display connected (PID 0x{pid:04X}){}",
+                if self.devs.len() > 1 { format!(", {} interfaces", self.devs.len()) } else { String::new() }
+            ),
         }
     }
 }
