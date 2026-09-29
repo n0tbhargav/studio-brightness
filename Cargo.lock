@@ -4178,6 +4178,7 @@ dependencies = [
  "num-traits",
  "once_cell",
  "pin-weak",
+ "raw-window-handle",
  "slint-macros",
  "unicode-segmentation",
  "vtable",
@@ -4381,10 +4382,12 @@ dependencies = [
 
 [[package]]
 name = "studio-brightness"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "global-hotkey",
  "hidapi",
+ "image",
+ "raw-window-handle",
  "slint",
  "slint-build",
  "tray-icon",

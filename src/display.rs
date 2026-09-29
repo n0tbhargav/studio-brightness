@@ -84,13 +84,23 @@ impl Displays {
         }
     }
 
-    /// Nudges relative to the first display's current level.
-    pub fn adjust(&mut self, delta: i32) {
-        if let Some(cur) = self.percent() {
-            self.set(cur + delta);
+    pub fn name(&self) -> &'static str {
+        match self.pids.first() {
+            Some(0x1116) => "Studio Display XDR",
+            Some(0x1118) => "Studio Display (2026)",
+            Some(_) => "Studio Display",
+            None => "No display",
         }
     }
 
+    pub fn info(&self) -> String {
+        match self.pids.first() {
+            Some(pid) => format!("usb-c · pid 0x{pid:04x}"),
+            None => "not connected. Check the USB-C / Thunderbolt cable.".into(),
+        }
+    }
+
+    #[allow(dead_code)]
     pub fn status(&self) -> String {
         match self.pids.first() {
             None => "No Studio Display found. Connect it with its USB-C / Thunderbolt cable.".into(),

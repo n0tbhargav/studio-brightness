@@ -6,7 +6,7 @@ use windows::core::PCWSTR;
 use windows::Win32::Graphics::Gdi::*;
 use windows::Win32::UI::ColorSystem::SetDeviceGammaRamp;
 
-const NEUTRAL_K: f64 = 6500.0;
+pub const NEUTRAL_K: f64 = 6500.0;
 
 fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
@@ -36,11 +36,19 @@ fn kelvin_rgb(k: f64) -> [f64; 3] {
     [r.clamp(0.0, 255.0), g.clamp(0.0, 255.0), b.clamp(0.0, 255.0)]
 }
 
-/// Per-channel multipliers relative to 6500 K (so 6500 K is the identity ramp).
-fn multipliers(k: f64) -> [f64; 3] {
+/// Per-channel multipliers relative to 6500 K (6500 K with shift 0 is the identity ramp).
+/// `shift` runs -50 (green) to +50 (magenta).
+pub fn multipliers(k: f64, shift: f64) -> [f64; 3] {
     let want = kelvin_rgb(k);
     let base = kelvin_rgb(NEUTRAL_K);
-    let m = [want[0] / base[0], want[1] / base[1], want[2] / base[2]];
+    let mut m = [want[0] / base[0], want[1] / base[1], want[2] / base[2]];
+    let s = shift / 50.0;
+    if s > 0.0 {
+        m[1] *= 1.0 - 0.25 * s;
+    } else {
+        m[0] *= 1.0 + 0.15 * s;
+        m[2] *= 1.0 + 0.15 * s;
+    }
     let peak = m.iter().cloned().fold(f64::MIN, f64::max);
     [m[0] / peak, m[1] / peak, m[2] / peak]
 }
@@ -77,8 +85,8 @@ pub fn apple_display_names() -> Vec<String> {
 }
 
 /// Sets the white point of every Apple display. Returns how many accepted it.
-pub fn apply_kelvin(k: f64) -> usize {
-    let m = multipliers(k);
+pub fn apply(k: f64, shift: f64) -> usize {
+    let m = multipliers(k, shift);
     let mut ramp = [[0u16; 256]; 3];
     for c in 0..3 {
         for i in 0..256 {
@@ -88,8 +96,9 @@ pub fn apply_kelvin(k: f64) -> usize {
     let mut ok = 0;
     for name in apple_display_names() {
         let dev = wide(&name);
+        let driver = wide("DISPLAY");
         unsafe {
-            let hdc = CreateDCW(PCWSTR(wide("DISPLAY").as_ptr()), PCWSTR(dev.as_ptr()), PCWSTR::null(), None);
+            let hdc = CreateDCW(PCWSTR(driver.as_ptr()), PCWSTR(dev.as_ptr()), PCWSTR::null(), None);
             if hdc.is_invalid() {
                 continue;
             }
@@ -103,7 +112,7 @@ pub fn apply_kelvin(k: f64) -> usize {
 }
 
 pub fn reset() {
-    apply_kelvin(NEUTRAL_K);
+    apply(NEUTRAL_K, 0.0);
 }
 
 pub fn describe() -> String {

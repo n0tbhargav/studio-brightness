@@ -1,261 +1,608 @@
-import { Slider, Switch, Button } from "std-widgets.slint";
+import { Palette, ComboBox } from "std-widgets.slint";
+import "../assets/DepartureMono-Regular.otf";
 
-component NavItem inherits Rectangle {
-    in property <string> label;
-    in property <bool> active;
-    callback clicked();
-    height: 40px;
-    border-radius: 8px;
-    background: root.active ? #2b3038 : ta.has-hover ? #23272e : transparent;
+global Theme {
+    out property <bool> dark: Palette.color-scheme != ColorScheme.light;
+    out property <color> panel: dark ? #14171a : #f8f9f9;
+    out property <color> fill: dark ? #1c2024 : #e4e8ea;
+    out property <color> line: dark ? #262b30 : #d2d8db;
+    out property <color> fg: dark ? #d8dde1 : #13181b;
+    out property <color> muted: dark ? #7e8991 : #59636a;
+    out property <color> accent: dark ? #f2b33d : #a86500;
+    out property <color> accent-ink: dark ? #171000 : #ffffff;
+    out property <color> track: dark ? #333a40 : #c5ccd0;
+    out property <color> ok: dark ? #4cc481 : #1f8f52;
+}
+
+component Sep inherits Rectangle {
+    height: 1px;
+    background: Theme.line;
+}
+
+component Lbl inherits Text {
+    color: Theme.muted;
+    font-size: 11px;
+    letter-spacing: 1px;
+}
+
+component Meta inherits Text {
+    color: Theme.muted;
+    font-size: 11px;
+    horizontal-alignment: right;
+}
+
+component MonoSwitch inherits Rectangle {
+    in-out property <bool> checked;
+    in property <bool> enabled: true;
+    callback toggled(bool);
+    width: 30px;
+    height: 14px;
+    opacity: root.enabled ? 1 : 0.4;
+    background: root.checked ? Theme.accent : Theme.track;
     Rectangle {
-        x: 0px;
-        width: 3px;
-        height: 18px;
-        border-radius: 2px;
-        background: root.active ? #f5b93a : transparent;
+        y: 2px;
+        x: root.checked ? 18px : 2px;
+        width: 10px;
+        height: 10px;
+        background: Theme.panel;
+        animate x { duration: 100ms; }
     }
+    TouchArea {
+        enabled: root.enabled;
+        clicked => {
+            root.checked = !root.checked;
+            root.toggled(root.checked);
+        }
+    }
+}
+
+component TextButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> emphasized: false;
+    callback clicked();
+    height: 22px;
+    background: root.emphasized ? Theme.accent : (ta.has-hover ? Theme.fill : transparent);
+    border-width: root.emphasized ? 0px : 1px;
+    border-color: Theme.line;
     Text {
-        x: 16px;
-        text: root.label;
-        color: root.active ? #ffffff : #b3bac4;
-        font-size: 14px;
-        font-weight: root.active ? 600 : 400;
+        text: root.text;
+        color: root.emphasized ? Theme.accent-ink : Theme.fg;
+        font-size: 11px;
+        horizontal-alignment: center;
         vertical-alignment: center;
     }
     ta := TouchArea { clicked => { root.clicked(); } }
 }
 
-component Card inherits Rectangle {
-    background: #1f2227;
-    border-radius: 14px;
-    border-width: 1px;
-    border-color: #2b3038;
-}
+component MonoSlider inherits Rectangle {
+    in property <float> minimum: 0;
+    in property <float> maximum: 100;
+    in-out property <float> value;
+    in property <bool> enabled: true;
+    in property <bool> show-fill: true;
+    in property <brush> track-brush: Theme.track;
+    callback changed(float);
+    height: 22px;
+    opacity: root.enabled ? 1 : 0.4;
+    property <length> thumb-w: 9px;
+    property <float> frac: (root.value - root.minimum) / (root.maximum - root.minimum);
 
-component Segmented inherits Rectangle {
-    in property <[string]> options;
-    in property <int> current;
-    callback selected(int);
-    height: 38px;
-    background: #16181c;
-    border-radius: 10px;
-    HorizontalLayout {
-        padding: 3px;
-        spacing: 3px;
-        for opt[i] in root.options : Rectangle {
-            border-radius: 8px;
-            background: i == root.current ? #363c47 : transparent;
-            Text {
-                text: opt;
-                color: i == root.current ? #ffffff : #9aa1ab;
-                font-size: 13px;
-                font-weight: i == root.current ? 600 : 400;
-                horizontal-alignment: center;
-                vertical-alignment: center;
+    function set-from-x(x: length) {
+        root.value = Math.max(root.minimum, Math.min(root.maximum,
+            root.minimum + ((x - root.thumb-w / 2) / (root.width - root.thumb-w)) * (root.maximum - root.minimum)));
+        root.changed(root.value);
+    }
+
+    Rectangle {
+        y: (parent.height - self.height) / 2;
+        height: root.show-fill ? 2px : 6px;
+        background: root.track-brush;
+    }
+    if root.show-fill : Rectangle {
+        x: 0px;
+        y: (parent.height - self.height) / 2;
+        height: 2px;
+        width: root.frac * (parent.width - root.thumb-w) + root.thumb-w / 2;
+        background: Theme.accent;
+    }
+    Rectangle {
+        x: root.frac * (parent.width - root.thumb-w);
+        y: (parent.height - self.height) / 2;
+        width: root.thumb-w;
+        height: 16px;
+        background: Theme.fg;
+        border-width: 1px;
+        border-color: Theme.panel;
+    }
+    TouchArea {
+        enabled: root.enabled;
+        pointer-event(e) => {
+            if (e.button == PointerEventButton.left && e.kind == PointerEventKind.down) {
+                root.set-from-x(self.mouse-x);
             }
-            TouchArea { clicked => { root.selected(i); } }
+        }
+        moved => {
+            if (self.pressed) {
+                root.set-from-x(self.mouse-x);
+            }
         }
     }
 }
 
-component Heading inherits VerticalLayout {
-    in property <string> title;
-    in property <string> subtitle;
-    spacing: 4px;
-    Text { text: root.title; color: #ffffff; font-size: 26px; font-weight: 700; }
-    Text { text: root.subtitle; color: #8b929c; font-size: 13px; wrap: word-wrap; }
+// Auto-brightness curve: the default (dashed) and the personalised line on a log-lux axis.
+component CurveChart inherits Rectangle {
+    in property <string> line-cmds;
+    in property <string> base-cmds;
+    in property <float> dot-x;
+    in property <float> dot-y;
+    height: 96px;
+    Rectangle {
+        y: 0px;
+        height: 1px;
+        background: Theme.line;
+    }
+    Rectangle {
+        y: parent.height / 2;
+        height: 1px;
+        background: Theme.line;
+    }
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: Theme.line;
+    }
+    for i in 4 : Rectangle {
+        x: (i + 1) * parent.width / 5;
+        width: 1px;
+        background: Theme.line;
+    }
+    Path {
+        width: parent.width;
+        height: parent.height;
+        viewbox-width: 300;
+        viewbox-height: 100;
+        commands: root.base-cmds;
+        stroke: Theme.track;
+        stroke-width: 1.25px;
+    }
+    Path {
+        width: parent.width;
+        height: parent.height;
+        viewbox-width: 300;
+        viewbox-height: 100;
+        commands: root.line-cmds;
+        stroke: Theme.accent;
+        stroke-width: 1.75px;
+    }
+    Rectangle {
+        x: root.dot-x * parent.width - 4px;
+        y: root.dot-y * parent.height - 4px;
+        width: 8px;
+        height: 8px;
+        border-radius: 4px;
+        background: Theme.accent;
+        border-width: 2px;
+        border-color: Theme.panel;
+    }
 }
 
-export component AppWindow inherits Window {
-    title: "Studio Brightness";
-    icon: @image-url("icon.png");
-    min-width: 720px;
-    min-height: 520px;
-    preferred-width: 860px;
-    preferred-height: 580px;
-    background: #14161a;
+export component Flyout inherits Window {
+    no-frame: true;
+    always-on-top: true;
+    background: Theme.panel;
+    width: 392px;
+    default-font-family: "Departure Mono";
+    default-font-size: 11px;
 
-    // navigation
-    in-out property <int> page: 0;
+    // header
+    in property <image> preview;
+    in property <string> display-name: "Studio Display";
+    in property <string> display-info: "";
+    in property <bool> display-found: false;
 
     // brightness
     in-out property <float> brightness: 50;
-    in property <bool> display-found: false;
-    in property <string> display-status: "";
+    in property <bool> brightness-locked: false;
+    in property <bool> auto-available: false;
+    in-out property <bool> auto-on: false;
+    in property <string> auto-status: "";
+    in-out property <bool> curve-open: false;
+    in property <string> curve-line;
+    in property <string> curve-base;
+    in property <float> curve-dot-x;
+    in property <float> curve-dot-y;
+    in property <string> bias-text;
+    in property <bool> bias-active: false;
 
-    // true tone
-    in-out property <int> tt-mode: 0;
-    in-out property <float> tt-strength: 80;
-    in-out property <float> tt-warmth: 5000;
-    in property <string> ambient-text: "";
-    in property <string> whitepoint-text: "";
-    in property <string> tt-note: "";
+    // color mode
+    in property <[string]> ref-modes;
+    in-out property <int> ref-index: 0;
+    in property <bool> ref-available: false;
+    in property <string> ref-status;
+    in property <bool> confirm-visible: false;
+    in property <string> confirm-text;
 
-    // settings
+    // true tone + manual tint
+    in property <bool> tone-locked: false;
+    in-out property <bool> tt-on: true;
+    in property <string> tt-status;
+    in property <string> tt-room;
+    in property <string> tt-screen;
+    in property <float> tt-room-pos: 0.5;
+    in property <float> tt-screen-pos: 0.5;
+    in-out property <bool> manual-on: false;
+    in property <string> manual-status;
+    in-out property <float> warmth: 4800;
+    in-out property <float> shift: 0;
+
+    // footer
     in-out property <bool> autostart: false;
-    in property <string> version: "";
 
-    callback set-brightness(int);
-    callback tt-mode-changed(int);
-    callback tt-strength-changed(int);
-    callback tt-warmth-changed(int);
-    callback autostart-changed(bool);
-    callback refresh();
+    callback brightness-changed(float);
+    callback auto-toggled(bool);
+    callback curve-reset();
+    callback ref-selected(int);
+    callback confirm-keep();
+    callback confirm-revert();
+    callback tt-toggled(bool);
+    callback manual-toggled(bool);
+    callback warmth-changed(float);
+    callback shift-changed(float);
+    callback autostart-toggled(bool);
     callback diagnostics();
+    callback quit();
 
-    HorizontalLayout {
-        // ---- sidebar ----
-        Rectangle {
-            width: 210px;
-            background: #1a1d22;
+    Rectangle {
+        border-width: 1px;
+        border-color: Theme.line;
+    }
+
+    VerticalLayout {
+        // ---- header ----
+        HorizontalLayout {
+            padding: 14px;
+            spacing: 14px;
+            height: 152px;
+            Image {
+                source: root.preview;
+                width: 190px;
+                image-fit: contain;
+            }
             VerticalLayout {
-                padding: 16px;
-                spacing: 6px;
-                alignment: start;
-                Text {
-                    text: "Studio Brightness";
-                    color: #ffffff;
-                    font-size: 16px;
-                    font-weight: 700;
+                alignment: center;
+                spacing: 4px;
+                Text { text: root.display-name; color: Theme.fg; font-size: 12px; wrap: word-wrap; }
+                HorizontalLayout {
+                    spacing: 6px;
+                    alignment: start;
+                    Rectangle {
+                        y: 4px;
+                        width: 6px;
+                        height: 6px;
+                        border-radius: 3px;
+                        background: root.display-found ? Theme.ok : Theme.muted;
+                    }
+                    Text { text: root.display-info; color: Theme.muted; font-size: 10px; wrap: word-wrap; }
                 }
-                Rectangle { height: 14px; }
-                NavItem { label: "Brightness"; active: root.page == 0; clicked => { root.page = 0; } }
-                NavItem { label: "True Tone"; active: root.page == 1; clicked => { root.page = 1; } }
-                NavItem { label: "Settings"; active: root.page == 2; clicked => { root.page = 2; } }
             }
         }
+        Sep { }
 
-        // ---- content ----
-        Rectangle {
-            VerticalLayout {
-                padding: 32px;
-                spacing: 20px;
-                alignment: start;
-
-                if root.page == 0 : VerticalLayout {
-                    spacing: 20px;
-                    Heading { title: "Brightness"; subtitle: root.display-status; }
-                    Card {
-                        height: 200px;
-                        VerticalLayout {
-                            padding: 24px;
-                            spacing: 14px;
-                            Text {
-                                text: Math.round(root.brightness) + "%";
-                                color: #ffffff;
-                                font-size: 54px;
-                                font-weight: 700;
-                            }
-                            Slider {
-                                minimum: 0;
-                                maximum: 100;
-                                enabled: root.display-found;
-                                value <=> root.brightness;
-                                changed(v) => { root.set-brightness(Math.round(v)); }
-                            }
-                            HorizontalLayout {
-                                spacing: 8px;
-                                for p in [0, 25, 50, 75, 100] : Button {
-                                    text: p + "%";
-                                    enabled: root.display-found;
-                                    clicked => { root.brightness = p; root.set-brightness(p); }
-                                }
-                            }
-                        }
-                    }
-                    HorizontalLayout {
-                        alignment: start;
-                        spacing: 10px;
-                        Button { text: "Refresh"; clicked => { root.refresh(); } }
-                        Text {
-                            text: "Hotkeys: Ctrl+Alt+Up / Ctrl+Alt+Down";
-                            color: #6f7681;
-                            font-size: 12px;
-                            vertical-alignment: center;
-                        }
-                    }
-                }
-
-                if root.page == 1 : VerticalLayout {
-                    spacing: 20px;
-                    Heading {
-                        title: "True Tone";
-                        subtitle: "Warms the screen to match your room, like Apple's True Tone.";
-                    }
-                    Segmented {
-                        options: ["Off", "Auto", "Manual"];
-                        current: root.tt-mode;
-                        selected(i) => { root.tt-mode = i; root.tt-mode-changed(i); }
-                    }
-                    Card {
-                        height: 150px;
-                        VerticalLayout {
-                            padding: 22px;
-                            spacing: 8px;
-                            Text { text: "Ambient light"; color: #8b929c; font-size: 12px; }
-                            Text { text: root.ambient-text; color: #ffffff; font-size: 18px; font-weight: 600; }
-                            Rectangle { height: 6px; }
-                            Text { text: "Display white point"; color: #8b929c; font-size: 12px; }
-                            Text { text: root.whitepoint-text; color: #f5b93a; font-size: 18px; font-weight: 600; }
-                        }
-                    }
-                    if root.tt-mode == 1 : Card {
-                        height: 96px;
-                        VerticalLayout {
-                            padding: 20px;
-                            spacing: 8px;
-                            Text { text: "Strength  " + Math.round(root.tt-strength) + "%"; color: #ffffff; font-size: 14px; }
-                            Slider {
-                                minimum: 0;
-                                maximum: 100;
-                                value <=> root.tt-strength;
-                                changed(v) => { root.tt-strength-changed(Math.round(v)); }
-                            }
-                        }
-                    }
-                    if root.tt-mode == 2 : Card {
-                        height: 96px;
-                        VerticalLayout {
-                            padding: 20px;
-                            spacing: 8px;
-                            Text { text: "Warmth  " + Math.round(root.tt-warmth) + " K"; color: #ffffff; font-size: 14px; }
-                            Slider {
-                                minimum: 3000;
-                                maximum: 6500;
-                                value <=> root.tt-warmth;
-                                changed(v) => { root.tt-warmth-changed(Math.round(v)); }
-                            }
-                        }
-                    }
+        // ---- brightness ----
+        VerticalLayout {
+            padding-left: 14px;
+            padding-right: 14px;
+            padding-top: 10px;
+            padding-bottom: 10px;
+            spacing: 7px;
+            HorizontalLayout {
+                Lbl { text: "BRIGHTNESS"; }
+                Meta { text: root.auto-status; }
+            }
+            HorizontalLayout {
+                alignment: space-between;
+                HorizontalLayout {
+                    alignment: start;
+                    spacing: 3px;
                     Text {
-                        text: root.tt-note;
-                        color: #6f7681;
-                        font-size: 12px;
-                        wrap: word-wrap;
+                        text: Math.round(root.brightness) + "";
+                        color: Theme.fg;
+                        font-size: 44px;
+                        vertical-alignment: bottom;
                     }
+                    Text { text: "%"; color: Theme.muted; font-size: 14px; vertical-alignment: bottom; }
                 }
-
-                if root.page == 2 : VerticalLayout {
-                    spacing: 20px;
-                    Heading { title: "Settings"; subtitle: "Runs in the system tray. Closing this window keeps it running."; }
-                    Card {
-                        height: 72px;
-                        HorizontalLayout {
-                            padding: 22px;
-                            Text { text: "Launch at sign-in"; color: #ffffff; font-size: 14px; vertical-alignment: center; }
-                            Switch {
-                                checked <=> root.autostart;
-                                toggled => { root.autostart-changed(self.checked); }
+                HorizontalLayout {
+                    alignment: end;
+                    spacing: 8px;
+                    Text { text: "Auto"; color: Theme.fg; vertical-alignment: bottom; }
+                    Rectangle {
+                        width: 30px;
+                        VerticalLayout {
+                            alignment: end;
+                            MonoSwitch {
+                                checked <=> root.auto-on;
+                                enabled: root.auto-available && !root.brightness-locked;
+                                toggled(v) => { root.auto-toggled(v); }
                             }
                         }
                     }
-                    HorizontalLayout {
-                        alignment: start;
-                        Button { text: "Diagnostics"; clicked => { root.diagnostics(); } }
+                }
+            }
+            MonoSlider {
+                minimum: 0;
+                maximum: 100;
+                value <=> root.brightness;
+                enabled: root.display-found && !root.brightness-locked;
+                changed(v) => { root.brightness-changed(v); }
+            }
+            Rectangle {
+                height: 5px;
+                for i in 11 : Rectangle {
+                    x: 4.5px + i * (parent.width - 9px) / 10;
+                    width: 1px;
+                    height: 4px;
+                    background: Theme.track;
+                }
+            }
+            if root.brightness-locked : Text {
+                text: "Locked by the selected color mode.";
+                color: Theme.muted;
+                font-size: 10px;
+            }
+            TouchArea {
+                height: 16px;
+                clicked => { root.curve-open = !root.curve-open; }
+                Text {
+                    x: 0px;
+                    width: parent.width;
+                    horizontal-alignment: left;
+                    text: (root.curve-open ? "v " : "> ") + "auto brightness curve";
+                    color: parent.has-hover ? Theme.fg : Theme.muted;
+                    font-size: 11px;
+                }
+            }
+            if root.curve-open : VerticalLayout {
+                spacing: 6px;
+                CurveChart {
+                    line-cmds: root.curve-line;
+                    base-cmds: root.curve-base;
+                    dot-x: root.curve-dot-x;
+                    dot-y: root.curve-dot-y;
+                }
+                HorizontalLayout {
+                    Text { text: root.bias-text; color: Theme.muted; font-size: 10px; vertical-alignment: center; }
+                    if root.bias-active : TextButton {
+                        width: 52px;
+                        text: "reset";
+                        clicked => { root.curve-reset(); }
                     }
-                    Text { text: "Version " + root.version; color: #6f7681; font-size: 12px; }
                 }
             }
         }
+        Sep { }
+
+        // ---- color mode ----
+        VerticalLayout {
+            padding-left: 14px;
+            padding-right: 14px;
+            padding-top: 10px;
+            padding-bottom: 10px;
+            spacing: 7px;
+            HorizontalLayout {
+                Lbl { text: "COLOR MODE"; }
+                Meta { text: root.ref-status; }
+            }
+            if root.ref-available : ComboBox {
+                model: root.ref-modes;
+                current-index <=> root.ref-index;
+                selected(v) => { root.ref-selected(root.ref-index); }
+            }
+            if !root.ref-available : Text {
+                text: "Reference modes not available on this display.";
+                color: Theme.muted;
+                font-size: 10px;
+                wrap: word-wrap;
+            }
+            if root.confirm-visible : Rectangle {
+                height: 30px;
+                background: Theme.fill;
+                border-width: 1px;
+                border-color: Theme.accent;
+                HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 4px;
+                    spacing: 6px;
+                    Text { text: root.confirm-text; color: Theme.fg; font-size: 10px; vertical-alignment: center; }
+                    TextButton { width: 44px; height: 22px; text: "keep"; emphasized: true; clicked => { root.confirm-keep(); } }
+                    TextButton { width: 54px; height: 22px; text: "revert"; clicked => { root.confirm-revert(); } }
+                }
+            }
+        }
+        Sep { }
+
+        // ---- true tone ----
+        VerticalLayout {
+            padding-left: 14px;
+            padding-right: 14px;
+            padding-top: 10px;
+            padding-bottom: 10px;
+            spacing: 7px;
+            opacity: root.tone-locked ? 0.45 : 1;
+            HorizontalLayout {
+                spacing: 8px;
+                Lbl { text: "TRUE TONE"; }
+                Meta { text: root.tt-status; }
+                MonoSwitch {
+                    checked <=> root.tt-on;
+                    enabled: !root.tone-locked;
+                    toggled(v) => { root.tt-toggled(v); }
+                }
+            }
+            if root.tt-on && !root.manual-on && !root.tone-locked : VerticalLayout {
+                spacing: 6px;
+                HorizontalLayout {
+                    Text { text: root.tt-room; color: Theme.fg; font-size: 11px; }
+                    Text { text: root.tt-screen; color: Theme.fg; font-size: 11px; horizontal-alignment: right; }
+                }
+                Rectangle {
+                    height: 10px;
+                    Rectangle {
+                        y: 2px;
+                        height: 6px;
+                        background: @linear-gradient(90deg, #ff8f2e 0%, #ffd6a3 45%, #ffffff 72%, #cfe0ff 100%);
+                    }
+                    Rectangle {
+                        x: root.tt-room-pos * (parent.width - 9px);
+                        y: 0.5px;
+                        width: 9px;
+                        height: 9px;
+                        border-radius: 5px;
+                        border-width: 2px;
+                        border-color: Theme.fg;
+                    }
+                    Rectangle {
+                        x: root.tt-screen-pos * (parent.width - 2px);
+                        width: 2px;
+                        background: Theme.fg;
+                    }
+                }
+            }
+        }
+        Sep { }
+
+        // ---- manual tint ----
+        VerticalLayout {
+            padding-left: 14px;
+            padding-right: 14px;
+            padding-top: 10px;
+            padding-bottom: 10px;
+            spacing: 7px;
+            opacity: root.tone-locked ? 0.45 : 1;
+            HorizontalLayout {
+                spacing: 8px;
+                Lbl { text: "MANUAL TINT"; }
+                Meta { text: root.manual-status; }
+                MonoSwitch {
+                    checked <=> root.manual-on;
+                    enabled: !root.tone-locked;
+                    toggled(v) => { root.manual-toggled(v); }
+                }
+            }
+            if root.manual-on && !root.tone-locked : VerticalLayout {
+                spacing: 8px;
+                VerticalLayout {
+                    HorizontalLayout {
+                        Text { text: "Warmth"; color: Theme.fg; }
+                        Meta { text: Math.round(root.warmth) + " K"; }
+                    }
+                    MonoSlider {
+                        minimum: 3000;
+                        maximum: 6500;
+                        show-fill: false;
+                        track-brush: @linear-gradient(90deg, #ff8f2e 0%, #ffd6a3 45%, #ffffff 72%, #cfe0ff 100%);
+                        value <=> root.warmth;
+                        changed(v) => { root.warmth-changed(v); }
+                    }
+                }
+                VerticalLayout {
+                    HorizontalLayout {
+                        Text { text: "Tint"; color: Theme.fg; }
+                        Meta { text: (root.shift > 0 ? "+" : "") + Math.round(root.shift); }
+                    }
+                    MonoSlider {
+                        minimum: -50;
+                        maximum: 50;
+                        show-fill: false;
+                        track-brush: @linear-gradient(90deg, #6fd28c 0%, #dcdcdc 50%, #d86fc8 100%);
+                        value <=> root.shift;
+                        changed(v) => { root.shift-changed(v); }
+                    }
+                }
+            }
+        }
+        Sep { }
+
+        // ---- footer ----
+        Rectangle {
+            background: Theme.fill;
+            height: 36px;
+            HorizontalLayout {
+                padding-left: 14px;
+                padding-right: 10px;
+                spacing: 8px;
+                alignment: space-between;
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+                    Rectangle {
+                        width: 30px;
+                        VerticalLayout {
+                            alignment: center;
+                            MonoSwitch {
+                                checked <=> root.autostart;
+                                toggled(v) => { root.autostart-toggled(v); }
+                            }
+                        }
+                    }
+                    Text { text: "Launch at sign-in"; color: Theme.fg; vertical-alignment: center; }
+                }
+                HorizontalLayout {
+                    spacing: 6px;
+                    alignment: end;
+                    Rectangle {
+                        width: 90px;
+                        VerticalLayout { alignment: center; TextButton { text: "diagnostics"; clicked => { root.diagnostics(); } } }
+                    }
+                    Rectangle {
+                        width: 44px;
+                        VerticalLayout { alignment: center; TextButton { text: "quit"; clicked => { root.quit(); } } }
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component Osd inherits Window {
+    no-frame: true;
+    always-on-top: true;
+    background: Theme.panel;
+    width: 250px;
+    height: 40px;
+    default-font-family: "Departure Mono";
+    default-font-size: 11px;
+    in property <float> level: 50;
+
+    Rectangle {
+        border-width: 1px;
+        border-color: Theme.line;
+    }
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 12px;
+        Rectangle {
+            width: 12px;
+            VerticalLayout {
+                alignment: center;
+                Rectangle { height: 12px; border-radius: 6px; background: Theme.accent; }
+            }
+        }
+        Rectangle {
+            VerticalLayout {
+                alignment: center;
+                Rectangle {
+                    height: 2px;
+                    background: Theme.track;
+                    Rectangle {
+                        x: 0px;
+                        width: parent.width * root.level / 100;
+                        background: Theme.accent;
+                    }
+                }
+            }
+        }
+        Text { text: Math.round(root.level) + ""; color: Theme.fg; width: 24px; vertical-alignment: center; horizontal-alignment: right; }
     }
 }

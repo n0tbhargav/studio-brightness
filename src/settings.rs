@@ -3,15 +3,18 @@
 use std::path::PathBuf;
 
 pub struct Settings {
-    pub tt_mode: i32,
-    pub tt_strength: i32,
-    pub tt_warmth: i32,
+    pub tt_on: bool,
+    pub manual_on: bool,
+    pub warmth: f32,
+    pub shift: f32,
+    pub auto_on: bool,
+    pub bias: f32,
     pub autostart: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { tt_mode: 0, tt_strength: 80, tt_warmth: 5000, autostart: false }
+        Self { tt_on: false, manual_on: false, warmth: 4800.0, shift: 0.0, auto_on: false, bias: 0.0, autostart: false }
     }
 }
 
@@ -25,12 +28,16 @@ pub fn load() -> Settings {
     let Ok(text) = std::fs::read_to_string(path()) else { return s };
     for line in text.lines() {
         let Some((k, v)) = line.split_once('=') else { continue };
-        let n = v.trim().parse::<i32>().unwrap_or(0);
+        let f = v.trim().parse::<f32>().unwrap_or(0.0);
+        let b = f != 0.0;
         match k.trim() {
-            "tt_mode" => s.tt_mode = n.clamp(0, 2),
-            "tt_strength" => s.tt_strength = n.clamp(0, 100),
-            "tt_warmth" => s.tt_warmth = n.clamp(3000, 6500),
-            "autostart" => s.autostart = n != 0,
+            "tt_on" => s.tt_on = b,
+            "manual_on" => s.manual_on = b,
+            "warmth" => s.warmth = f.clamp(3000.0, 6500.0),
+            "shift" => s.shift = f.clamp(-50.0, 50.0),
+            "auto_on" => s.auto_on = b,
+            "bias" => s.bias = f.clamp(-40.0, 40.0),
+            "autostart" => s.autostart = b,
             _ => {}
         }
     }
@@ -45,8 +52,8 @@ pub fn save(s: &Settings) {
     let _ = std::fs::write(
         p,
         format!(
-            "tt_mode={}\ntt_strength={}\ntt_warmth={}\nautostart={}\n",
-            s.tt_mode, s.tt_strength, s.tt_warmth, s.autostart as i32
+            "tt_on={}\nmanual_on={}\nwarmth={}\nshift={}\nauto_on={}\nbias={}\nautostart={}\n",
+            s.tt_on as i32, s.manual_on as i32, s.warmth, s.shift, s.auto_on as i32, s.bias, s.autostart as i32
         ),
     );
 }
@@ -60,18 +67,8 @@ pub fn set_autostart(enable: bool) {
     unsafe {
         if enable {
             let Ok(exe) = std::env::current_exe() else { return };
-            let value: Vec<u16> = format!("\"{}\" --minimized", exe.display())
-                .encode_utf16()
-                .chain(std::iter::once(0))
-                .collect();
-            let _ = RegSetKeyValueW(
-                HKEY_CURRENT_USER,
-                key,
-                name,
-                REG_SZ.0,
-                Some(value.as_ptr() as *const _),
-                (value.len() * 2) as u32,
-            );
+            let value: Vec<u16> = format!("\"{}\" --minimized", exe.display()).encode_utf16().chain(std::iter::once(0)).collect();
+            let _ = RegSetKeyValueW(HKEY_CURRENT_USER, key, name, REG_SZ.0, Some(value.as_ptr() as *const _), (value.len() * 2) as u32);
         } else {
             let _ = RegDeleteKeyValueW(HKEY_CURRENT_USER, key, name);
         }

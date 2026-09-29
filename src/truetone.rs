@@ -1,4 +1,4 @@
-//! True Tone approximation: decides the white point (Kelvin) the screen should show.
+//! True Tone approximation and manual tint: decides the white point (Kelvin) and tint shift.
 
 use crate::sensor::Ambient;
 
@@ -6,43 +6,28 @@ pub const NEUTRAL_K: f64 = 6500.0;
 pub const WARMEST_K: f64 = 3000.0;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum Mode {
+pub enum Source {
     Off,
-    Auto,
     Manual,
-}
-
-impl Mode {
-    pub fn from_index(i: i32) -> Self {
-        match i {
-            1 => Mode::Auto,
-            2 => Mode::Manual,
-            _ => Mode::Off,
-        }
-    }
-    pub fn index(self) -> i32 {
-        match self {
-            Mode::Off => 0,
-            Mode::Auto => 1,
-            Mode::Manual => 2,
-        }
-    }
+    Sensor,
+    TimeOfDay,
 }
 
 pub struct TrueTone {
-    pub mode: Mode,
-    pub strength: i32,
-    pub manual_k: i32,
-    current_k: f64,
+    pub tt_on: bool,
+    pub manual_on: bool,
+    pub warmth: f32,
+    pub shift: f32,
+    cur_k: f64,
 }
 
 impl TrueTone {
-    pub fn new(mode: Mode, strength: i32, manual_k: i32) -> Self {
-        Self { mode, strength, manual_k, current_k: NEUTRAL_K }
+    pub fn new(tt_on: bool, manual_on: bool, warmth: f32, shift: f32) -> Self {
+        Self { tt_on, manual_on, warmth, shift, cur_k: NEUTRAL_K }
     }
 
-    pub fn current_k(&self) -> f64 {
-        self.current_k
+    pub fn cur_k(&self) -> f64 {
+        self.cur_k
     }
 
     /// 0 in daytime, 1 at night, with smooth evening/morning ramps.
@@ -57,26 +42,27 @@ impl TrueTone {
         }
     }
 
-    /// Returns the (smoothed) Kelvin to apply this tick, and a note on what drove it.
-    pub fn tick(&mut self, ambient: Option<&Ambient>, hour: f64) -> (f64, &'static str) {
-        let (target, note) = match self.mode {
-            Mode::Off => (NEUTRAL_K, "off"),
-            Mode::Manual => (self.manual_k as f64, "manual"),
-            Mode::Auto => {
-                let s = self.strength as f64 / 100.0;
-                let (room_k, note) = match ambient {
-                    Some(Ambient { lux, cct: Some(c) }) if *lux >= 1.0 => (c.clamp(WARMEST_K, NEUTRAL_K), "sensor"),
-                    _ => (NEUTRAL_K - Self::night_factor(hour) * (NEUTRAL_K - 3600.0), "time of day"),
-                };
-                (NEUTRAL_K - (NEUTRAL_K - room_k) * s, note)
+    /// One 100 ms step. Returns the Kelvin/shift to show and what drove it. `locked` (a
+    /// reference mode is active) forces neutral.
+    pub fn tick(&mut self, ambient: Option<&Ambient>, hour: f64, locked: bool) -> (f64, f64, Source) {
+        let (target, shift, src) = if locked {
+            (NEUTRAL_K, 0.0, Source::Off)
+        } else if self.manual_on {
+            (self.warmth as f64, self.shift as f64, Source::Manual)
+        } else if self.tt_on {
+            match ambient {
+                Some(Ambient { lux, cct: Some(c) }) if *lux >= 1.0 => (c.clamp(WARMEST_K, NEUTRAL_K), 0.0, Source::Sensor),
+                _ => (NEUTRAL_K - Self::night_factor(hour) * (NEUTRAL_K - 3600.0), 0.0, Source::TimeOfDay),
             }
+        } else {
+            (NEUTRAL_K, 0.0, Source::Off)
         };
-        // Ease toward the target so it never visibly jumps; manual/off snap.
-        self.current_k = if self.mode == Mode::Auto {
-            self.current_k + (target - self.current_k) * 0.2
+        // True Tone eases toward the target; manual and off snap.
+        self.cur_k = if src == Source::Sensor || src == Source::TimeOfDay {
+            self.cur_k + (target - self.cur_k) * 0.2
         } else {
             target
         };
-        (self.current_k, note)
+        (self.cur_k, shift, src)
     }
 }
